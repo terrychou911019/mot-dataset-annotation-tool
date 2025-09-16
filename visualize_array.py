@@ -59,8 +59,8 @@ def main():
 
     arr_path = Path(args.arr_dir) / f"{args.sequence}.npy"
     arr = np.load(arr_path)
-
     output_path = Path(args.output_dir) / args.sequence / f"{args.stage}_stage.png"
+    
     visualize_array(arr, args.sequence, str(output_path))
 
 
