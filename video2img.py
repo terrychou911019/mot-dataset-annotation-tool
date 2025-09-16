@@ -3,18 +3,18 @@ from pathlib import Path
 import cv2
 
 
-def video2img(video_path: str, output_folder: str = "img1") -> int:
+def video2img(video_path: str, output_dir: str = "img1") -> int:
     """
     Convert a video into sequential images.
 
     Args:
         video_path (str): Path to the input video file.
-        output_folder (str): Path to the folder where frames will be saved.
+        output_dir (str): Path to the folder where frames will be saved.
 
     Returns:
         int: Number of frames (images) extracted.
     """
-    output_path = Path(output_folder)
+    output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
@@ -41,13 +41,16 @@ def video2img(video_path: str, output_folder: str = "img1") -> int:
 def main():
     parser = argparse.ArgumentParser(description="Convert a video into images.")
     parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
+    parser.add_argument("--root", type=str, default="videos",
+                        help="Folder that contains {sequence}.mp4 (default: videos)")
+    parser.add_argument("--output_dir", type=str, default="dataset",
+                        help="Folder to save {sequence}/img1 (default: dataset)")
     args = parser.parse_args()
 
-    seq_name = args.sequence
-    video_file = Path("videos") / f"{seq_name}.mp4"
-    output_folder = Path("dataset") / seq_name / "img1"
+    video_file = Path(args.root) / f"{args.sequence}.mp4"
+    output_dir = Path(args.output_dir) / args.sequence / "img1"
 
-    video2img(str(video_file), str(output_folder))
+    video2img(str(video_file), str(output_dir))
 
 
 if __name__ == "__main__":
