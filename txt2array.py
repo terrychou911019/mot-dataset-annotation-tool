@@ -5,7 +5,7 @@ import pandas as pd
 from typing import Optional
 
 
-def txt2array(file_path: str, num_frames: Optional[int] = None, num_tracks: Optional[int] = None) -> np.ndarray:
+def txt2array(txt_path: str, num_frames: Optional[int] = None, num_tracks: Optional[int] = None) -> np.ndarray:
     """
     Load a MOT-style tracklet txt into a dense 3D numpy array.
 
@@ -18,7 +18,7 @@ def txt2array(file_path: str, num_frames: Optional[int] = None, num_tracks: Opti
         arr[track_id, frame, :] = [x, y, w, h] (float32), NaN if missing.
 
     Args:
-        file_path (str): Full path to the MOT-style annotation file.
+        txt_path (str): Full path to the MOT-style annotation file.
                          Expected columns order: frame, track_id, x, y, w, h, ...
         num_frames (int | None): Manually set the maximum frame index. If None, use max from file.
         num_tracks (int | None): Manually set the maximum track_id. If None, use max from file.
@@ -26,7 +26,7 @@ def txt2array(file_path: str, num_frames: Optional[int] = None, num_tracks: Opti
     Returns:
         np.ndarray: Dense array of shape (num_tracks+1, num_frames+1, 4), dtype=float32.
     """
-    path = Path(file_path)
+    path = Path(txt_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
