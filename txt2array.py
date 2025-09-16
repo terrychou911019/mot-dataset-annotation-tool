@@ -1,47 +1,91 @@
-import os
+import argparse
+from pathlib import Path
 import numpy as np
 import pandas as pd
+from typing import Optional
 
-def txt2array(file_path, num_frames=None, num_tracks=None):
+
+def txt2array(file_path: str, num_frames: Optional[int] = None, num_tracks: Optional[int] = None) -> np.ndarray:
     """
-    Load MOT-style tracklet file into a 3D numpy array.
-    Shape = (num_tracks+1, num_frames+1, 4)
-    Each element stores a bounding box (x, y, w, h).
-    Missing detections are filled with np.nan.
+    Load a MOT-style tracklet txt into a dense 3D numpy array.
+
+    Array shape:
+        (num_tracks + 1, num_frames + 1, 4)
+    Indexing convention:
+        - track IDs and frame IDs are assumed to be 1-based in the txt.
+        - index 0 along track/frame is kept as padding (NaNs).
+    Content:
+        arr[track_id, frame, :] = [x, y, w, h] (float32), NaN if missing.
+
+    Args:
+        file_path (str): Full path to the MOT-style annotation file.
+                         Expected columns order: frame, track_id, x, y, w, h, ...
+        num_frames (int | None): Manually set the maximum frame index. If None, use max from file.
+        num_tracks (int | None): Manually set the maximum track_id. If None, use max from file.
+
+    Returns:
+        np.ndarray: Dense array of shape (num_tracks+1, num_frames+1, 4), dtype=float32.
     """
-    # Define column names for MOT format
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    # Define/parse columns (MOT format compatible)
     cols = ["frame", "track_id", "x", "y", "w", "h", "score", "i1", "i2", "i3"]
-    df = pd.read_csv(file_path, header=None, names=cols)
+    df = pd.read_csv(path, header=None, names=cols, usecols=[0, 1, 2, 3, 4, 5])
 
-    # Convert frame_id and track_id to integer
+    # Ensure dtypes
     df["frame"] = df["frame"].astype(int)
     df["track_id"] = df["track_id"].astype(int)
+    df[["x", "y", "w", "h"]] = df[["x", "y", "w", "h"]].astype(np.float32)
 
-    # If not specified, use maximum values from data
+    # Determine sizes if not provided
+    max_frame = int(df["frame"].max()) if not df.empty else 0
+    max_track = int(df["track_id"].max()) if not df.empty else 0
     if num_frames is None:
-        num_frames = df["frame"].max()
+        num_frames = max_frame
     if num_tracks is None:
-        num_tracks = df["track_id"].max()
+        num_tracks = max_track
 
-    # Initialize array: track_id × frame × bbox(4)
-    # Fill with NaN to represent missing detections
+    # Initialize with NaNs
     arr = np.full((num_tracks + 1, num_frames + 1, 4), np.nan, dtype=np.float32)
 
-    # Insert detections into the array
-    for _, row in df.iterrows():
-        f = int(row["frame"])
-        t = int(row["track_id"])
-        arr[t, f, :] = [row["x"], row["y"], row["w"], row["h"]]
+    if not df.empty:
+        frames = df["frame"].to_numpy(dtype=int)
+        tracks = df["track_id"].to_numpy(dtype=int)
+        boxes = df[["x", "y", "w", "h"]].to_numpy(dtype=np.float32)
+
+        # Vectorized assignment
+        arr[tracks, frames] = boxes
 
     return arr
 
-# ===== Example usage =====
-if __name__ == "__main__":
-    seq_name = "seq01"
-    file_path = f"gta_tracklets/{seq_name}.txt"  # Path to your tracklet file
-    arr = txt2array(file_path)
-    
-    os.makedirs(f"tracklets_array", exist_ok=True)
-    np.save(f"tracklets_array/{seq_name}.npy", arr)  # Save array to .npy file
 
-    print("Array shape:", arr.shape)  # (num_tracks+1, num_frames+1, 4)
+def main():
+    parser = argparse.ArgumentParser(description="Convert MOT-style txt to dense numpy array.")
+    parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
+    parser.add_argument("--root", type=str, default="gta_tracklets",
+                        help="Folder that contains {sequence}.txt (default: gta_tracklets)")
+    parser.add_argument("--output_dir", type=str, default="tracklets_array",
+                        help="Folder to save {sequence}.npy (default: tracklets_array)")
+    parser.add_argument("--num_frames", type=int, default=None,
+                        help="Override max frame index; if omitted, inferred from file")
+    parser.add_argument("--num_tracks", type=int, default=None,
+                        help="Override max track id; if omitted, inferred from file")
+    args = parser.parse_args()
+
+    txt_path = Path(args.root) / f"{args.sequence}.txt"
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{args.sequence}.npy"
+
+    arr = txt2array(str(txt_path), num_frames=args.num_frames, num_tracks=args.num_tracks)
+    np.save(output_path, arr)
+
+    print(f"Saved array to: {output_path}")
+    print(f"shape: {arr.shape}  (tracks+1, frames+1, 4)")
+    print(f"dtype: {arr.dtype}")
+
+
+if __name__ == "__main__":
+    main()
