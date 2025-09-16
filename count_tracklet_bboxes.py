@@ -1,26 +1,24 @@
-# count_bboxes.py
 import argparse
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 
 
-def count_tracklet_bboxes(seq_name: str, tracklet_id: int, root: str = "gta_tracklets") -> int:
+def count_tracklet_bboxes(file_path: str, tracklet_id: int) -> int:
     """
     Count how many bounding boxes (bboxes) a given tracklet ID has.
 
     Args:
-        seq_name (str): Sequence name (e.g., 'seq01').
+        file_path (str): Path to the annotation file.
         tracklet_id (int): Tracklet ID to count.
-        root (str): Root directory where annotation files are stored.
 
     Returns:
         int: Number of bounding boxes (rows) for the given tracklet ID.
     """
-    file_path = Path(root) / f"{seq_name}.txt"
-    if not file_path.exists():
+    path = Path(file_path)
+    if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    df = pd.read_csv(file_path, header=None)
+    df = pd.read_csv(path, header=None)
     return df[df[1] == tracklet_id].shape[0]
 
 
@@ -30,7 +28,8 @@ def main():
     parser.add_argument("tracklet_id", type=int, help="Tracklet ID to count.")
     args = parser.parse_args()
 
-    count = count_tracklet_bboxes(args.sequence, args.tracklet_id)
+    file_path = Path("gta_tracklets") / f"{args.sequence}.txt"
+    count = count_tracklet_bboxes(file_path, args.tracklet_id)
     print(f"Tracklet {args.tracklet_id} has {count} bboxes in {args.sequence}.")
 
 

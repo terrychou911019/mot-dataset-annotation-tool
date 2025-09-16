@@ -1,37 +1,54 @@
+import argparse
+from pathlib import Path
 import cv2
-import os
 
-def video2img(video_path, output_folder="img1"):
-    # Ensure the output folder exists
-    os.makedirs(output_folder, exist_ok=True)
 
-    # Load the video
+def video2img(video_path: str, output_folder: str = "img1") -> int:
+    """
+    Convert a video into sequential images.
+
+    Args:
+        video_path (str): Path to the input video file.
+        output_folder (str): Path to the folder where frames will be saved.
+
+    Returns:
+        int: Number of frames (images) extracted.
+    """
+    output_path = Path(output_folder)
+    output_path.mkdir(parents=True, exist_ok=True)
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print("Unable to open video:", video_path)
-        return
+        raise RuntimeError(f"Unable to open video: {video_path}")
 
     frame_idx = 1
-
     while True:
         ret, frame = cap.read()
         if not ret:
-            break  # No more frames
+            break  # End of video
 
-        # Format filename: 000001.jpg, 000002.jpg ...
         filename = f"{frame_idx:06d}.jpg"
-        filepath = os.path.join(output_folder, filename)
-
-        # Save the image
-        cv2.imwrite(filepath, frame)
+        filepath = output_path / filename
+        cv2.imwrite(str(filepath), frame)
         frame_idx += 1
 
     cap.release()
-    print(f"Done! Saved {frame_idx - 1} images to folder: {output_folder}")
+    total_frames = frame_idx - 1
+    print(f"Saved {total_frames} images to folder: {output_path}")
+    return total_frames
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert a video into images.")
+    parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
+    args = parser.parse_args()
+
+    seq_name = args.sequence
+    video_file = Path("videos") / f"{seq_name}.mp4"
+    output_folder = Path("dataset") / seq_name / "img1"
+
+    video2img(str(video_file), str(output_folder))
+
 
 if __name__ == "__main__":
-    seq_name = 'seq01'
-    video_file = rf'videos/{seq_name}.mp4' 
-    output_folder = rf'dataset/{seq_name}/img1'
-    
-    video2img(video_file, output_folder)
+    main()
