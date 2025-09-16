@@ -1,53 +1,54 @@
-import os
-import cv2
-import numpy as np
+from __future__ import annotations
+import argparse
+from pathlib import Path
 import csv
+import numpy as np
+import cv2
 
-def visualize_tracklets(img_dir, arr, out_root):
+
+def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: str, output_root: str) -> None:
     """
-    Create a folder per tracklet and save cropped bbox images (resized to 240x480).
-    Assumes:
-      - arr shape: (num_tracklets+1, num_frames+1, 4), 1-based indexing.
-      - arr[tid, fid] = (x, y, w, h) in pixel coordinates (may be float) or NaNs if missing.
-      - Images in img_dir are named as 000001.jpg, 000002.jpg, ... (1-based frame IDs).
-    Boundary checks:
-      - Clamp bbox to image bounds.
-      - Skip degenerate boxes after clamping.
-    Output:
-      - out_root/tracklet_0001/000001.jpg (resized to 240x480), ...
-      - out_root/tracklet_0001/_manifest.csv (frame,x,y,w,h,filename,orig_w,orig_h)
+    Create a folder per tracklet and save cropped bbox images (resized to resize_w*resize_h).
+
+    Args:
+        arr (np.ndarray): Tracklet array of shape (num_tracks+1, num_frames+1, 4).
+        resize_w (int): Width to resize cropped bbox images.
+        resize_h (int): Height to resize cropped bbox images.
+        img_dir (str): Directory containing original frame images named as 000001.jpg, 000002.jpg, ...
+        output_root (str): Root directory to save per-tracklet folders and manifests.
     """
-    os.makedirs(out_root, exist_ok=True)
+    output_root_path = Path(output_root)
+    output_root_path.mkdir(parents=True, exist_ok=True)
 
     JPEG_QUALITY = 80
 
     num_tracklets, num_frames, _ = arr.shape
 
     # Lazy-open per-tracklet manifest files
-    manifest_files = {}
-    manifest_writers = {}
+    manifest_files: dict[int, "Path"] = {}
+    manifest_writers: dict[int, csv._writer] = {}
 
-    def ensure_tracklet_dir_and_manifest(tid):
+    def ensure_tracklet_dir_and_manifest(tid: int):
         """Ensure tracklet folder and manifest CSV are created and opened."""
         if tid not in manifest_writers:
-            tracklet_dir = os.path.join(out_root, f"tracklet_{tid:04d}")
-            os.makedirs(tracklet_dir, exist_ok=True)
-            manifest_path = os.path.join(tracklet_dir, "_manifest.csv")
+            tracklet_dir = output_root_path / f"tracklet_{tid:04d}"
+            tracklet_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = tracklet_dir / "_manifest.csv"
             f = open(manifest_path, "w", newline="", encoding="utf-8")
             writer = csv.writer(f)
             writer.writerow(["frame", "x", "y", "w", "h", "filename"])
             manifest_files[tid] = f
             manifest_writers[tid] = writer
-        return os.path.join(out_root, f"tracklet_{tid:04d}"), manifest_writers[tid]
+        return output_root_path / f"tracklet_{tid:04d}", manifest_writers[tid]
 
-    target_w, target_h = 240, 480  # fixed output size
+    img_dir_path = Path(img_dir)
 
     for fid in range(1, num_frames):  # 1-based frames (skip index 0)
-        img_path = os.path.join(img_dir, f"{fid:06d}.jpg")
-        if not os.path.exists(img_path):
+        img_path = img_dir_path / f"{fid:06d}.jpg"
+        if not img_path.exists():
             continue
 
-        img = cv2.imread(img_path)
+        img = cv2.imread(str(img_path))
         if img is None:
             continue
 
@@ -80,38 +81,43 @@ def visualize_tracklets(img_dir, arr, out_root):
             if crop.size == 0:
                 continue
 
-            # Choose interpolation: INTER_AREA is generally safer for downscaling;
-            # it is also acceptable for upscaling if you want a single policy.
-            resized = cv2.resize(crop, (target_w, target_h), interpolation=cv2.INTER_AREA)
+            # Resize (down/up) with a single policy
+            resized = cv2.resize(crop, (resize_w, resize_h), interpolation=cv2.INTER_AREA)
 
             # Ensure tracklet directory & manifest
             tracklet_dir, writer = ensure_tracklet_dir_and_manifest(tid)
             out_name = f"{fid:06d}.jpg"
-            out_path = os.path.join(tracklet_dir, out_name)
+            out_path = tracklet_dir / out_name
 
-            cv2.imwrite(out_path, resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-            # cv2.imwrite(out_path, resized)
+            cv2.imwrite(str(out_path), resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
 
-            # Write manifest: store original bbox (int-rounded) + original crop size
-            writer.writerow([
-                fid,
-                int(x0), int(y0), int(x1 - x0), int(y1 - y0),
-                out_name,
-            ])
+            # Write manifest: store clamped int bbox
+            writer.writerow([fid, int(x0), int(y0), int(x1 - x0), int(y1 - y0), out_name])
 
     # Close all manifests
     for f in manifest_files.values():
         f.close()
 
-    print(f"All crops (240x480) saved under: {out_root}")
+    print(f"All crops ({resize_w}*{resize_h}) saved under: {output_root_path}")
 
 
-# ===== Example usage =====
+def main():
+    parser = argparse.ArgumentParser(description="Crop and save per-tracklet bbox images (resize_w*resize_h).")
+    parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
+    parser.add_argument("--arr_dir", type=str, default="tracklets_array",
+                        help="Folder containing {sequence}.npy (default: tracklets_array).")
+    parser.add_argument("--output_dir", type=str, default="tracklets_vis",
+                        help="Folder to save crops under {sequence}/ (default: tracklets_vis).")
+    args = parser.parse_args()
+
+    arr_path = Path(args.arr_dir) / f"{args.sequence}.npy"
+    arr = np.load(arr_path)
+    resize_w, resize_h = 240, 480
+    output_root = Path(args.output_dir) / args.sequence
+    img_dir = Path("dataset") / args.sequence / "img1" 
+
+    visualize_tracklets(arr, resize_w, resize_h, str(img_dir), str(output_root))
+
+
 if __name__ == "__main__":
-    # Example paths
-    seq_name = "seq01"
-    img_dir = f"dataset/{seq_name}/img1"           # per-frame images (000001.jpg ...)
-    out_root = f"tracklets_vis/{seq_name}"
-    arr = np.load(f"tracklets_array/{seq_name}.npy")  # (num_tracks+1, num_frames+1, 4), 1-based
-
-    visualize_tracklets(img_dir, arr, out_root)
+    main()

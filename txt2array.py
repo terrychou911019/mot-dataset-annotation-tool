@@ -18,8 +18,7 @@ def txt2array(txt_path: str, num_frames: Optional[int] = None, num_tracks: Optio
         arr[track_id, frame, :] = [x, y, w, h] (float32), NaN if missing.
 
     Args:
-        txt_path (str): Full path to the MOT-style annotation file.
-                         Expected columns order: frame, track_id, x, y, w, h, ...
+        txt_path (str): Path to the annotation file.
         num_frames (int | None): Manually set the maximum frame index. If None, use max from file.
         num_tracks (int | None): Manually set the maximum track_id. If None, use max from file.
 
