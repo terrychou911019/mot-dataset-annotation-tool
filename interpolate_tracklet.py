@@ -1,67 +1,64 @@
-import os
-import cv2
+from __future__ import annotations
+import argparse
+from pathlib import Path
 import numpy as np
-
-import os
 import cv2
-import numpy as np
 
-def interpolate_tracklet(arr, img_dir, tracklets_root, tid, max_gap=10):
+
+def interpolate_tracklet(arr: np.ndarray, tid: int, max_gap: int, img_dir: str, tracklets_root: str) -> np.ndarray:
     """
-    Interpolate missing bboxes for a tracklet within gaps <= max_gap.
-    - arr: numpy array (num_tracklets+1, num_frames+1, 4), 1-based indexing
-    - img_dir: folder containing per-frame images (000001.jpg, ...)
-    - tracklets_root: root folder containing tracklet_xxxx directories
-    - tid: tracklet id to interpolate
-    - max_gap: maximum allowed gap size for interpolation (inclusive)
+    Linearly interpolate missing bboxes for a single tracklet within gaps <= max_gap.
+
+    Args:
+        arr (np.ndarray): Tracklet array of shape (num_tracks+1, num_frames+1, 4).
+        tid (int): Tracklet ID to interpolate (1-based).
+        max_gap (int): Maximum allowed gap length (inclusive) for interpolation.
+        img_dir (str): Directory containing per-frame images named as 000001.jpg, 000002.jpg, ...
+        tracklets_root (str): Root folder containing per-tracklet folders named as tracklet_XXXX.
 
     Returns:
-      arr_new: updated numpy array with interpolated bboxes filled in
+        arr_new (np.ndarray): Updated array with interpolated bboxes filled in for gaps <= max_gap.
     """
+    num_tracks, num_frames, _ = arr.shape
+    if not (1 <= tid < num_tracks):
+        raise ValueError(f"tid out of range: {tid} (valid: 1..{num_tracks-1})")
+
     arr_new = arr.copy()
-    num_tracklets, num_frames, _ = arr_new.shape
+    tracklet_dir = Path(tracklets_root) / f"tracklet_{tid:04d}"
+    tracklet_dir.mkdir(parents=True, exist_ok=True)
 
-    tracklet_dir = os.path.join(tracklets_root, f"tracklet_{tid:04d}")
-    manifest_path = os.path.join(tracklet_dir, "_manifest.csv")
+    img_dir_path = Path(img_dir)
 
-    # Load manifest if exists
-    header = "frame,x,y,w,h,filename\n"
-    lines = []
-    if os.path.exists(manifest_path):
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        if lines:
-            header = lines[0]
-            lines = lines[1:]
-    manifest_entries = {int(l.split(",")[0]): l for l in lines}
-
-    # Get all frames where tracklet has bbox
+    # Frames where this tracklet has a bbox (ignore padding index 0)
     frames = np.where(~np.isnan(arr_new[tid, :, 0]))[0]
-    frames = frames[frames >= 1]  # skip index 0
-    if len(frames) < 2:
+    frames = frames[frames >= 1]
+    if frames.size < 2:
         return arr_new  # nothing to interpolate
 
-    for i in range(len(frames) - 1):
-        t = frames[i]
-        t_next = frames[i+1]
+    for i in range(frames.size - 1):
+        t = int(frames[i])
+        t_next = int(frames[i + 1])
         gap = t_next - t
-        
+
+        # Only interpolate for gaps 2..max_gap (strictly missing in-between)
         if 1 < gap <= max_gap:
-            bbox_start = arr_new[tid, t, :]
-            bbox_end = arr_new[tid, t_next, :]
-            print(f"Frame {t} to {t_next}, gap {gap}")
+            bbox_start = arr_new[tid, t, :].astype(float)
+            bbox_end = arr_new[tid, t_next, :].astype(float)
+
+            print(f"Interpolating tracklet {tid} from frame {t} to {t_next} (gap={gap})")
 
             for k in range(1, gap):
                 f = t + k
                 alpha = k / gap
-                bbox_interp = (1 - alpha) * bbox_start + alpha * bbox_end
+                bbox_interp = (1.0 - alpha) * bbox_start + alpha * bbox_end
                 arr_new[tid, f, :] = bbox_interp
 
-                # Generate crop for interpolated bbox
-                img_path = os.path.join(img_dir, f"{f:06d}.jpg")
-                if not os.path.exists(img_path):
+                # Save cropped image for the interpolated bbox if the frame exists on disk
+                img_path = img_dir_path / f"{f:06d}.jpg"
+                if not img_path.exists():
                     continue
-                img = cv2.imread(img_path)
+
+                img = cv2.imread(str(img_path))
                 if img is None:
                     continue
 
@@ -71,39 +68,57 @@ def interpolate_tracklet(arr, img_dir, tracklets_root, tid, max_gap=10):
                 y0 = int(np.floor(y))
                 x1 = int(np.ceil(x + w))
                 y1 = int(np.ceil(y + h))
+
+                # Clamp to image bounds
                 x0 = max(0, min(x0, W - 1))
                 y0 = max(0, min(y0, H - 1))
                 x1 = max(0, min(x1, W))
                 y1 = max(0, min(y1, H))
 
+                # Skip invalid or empty crops after clamping
                 if x1 <= x0 or y1 <= y0:
                     continue
                 crop = img[y0:y1, x0:x1]
                 if crop.size == 0:
                     continue
 
-                out_name = f"{f:06d}.jpg"
-                out_path = os.path.join(tracklet_dir, out_name)
-                cv2.imwrite(out_path, crop)
-
-                manifest_entries[f] = f"{f},{x0},{y0},{x1-x0},{y1-y0},{out_name}\n"
-
-    # Rewrite manifest
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write(header)
-        for frame_id in sorted(manifest_entries.keys()):
-            f.write(manifest_entries[frame_id])
+                out_path = tracklet_dir / f"{f:06d}.jpg"
+                cv2.imwrite(str(out_path), crop)
 
     return arr_new
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Interpolate missing bboxes for a tracklet (gap <= max_gap).")
+    parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
+    parser.add_argument("tracklet_id", type=int, help="Tracklet ID to interpolate (1-based).")
+    parser.add_argument("--max_gap", type=int, default=10, help="Maximum gap length to interpolate (inclusive).")
+    parser.add_argument("--arr_dir", type=str, default="tracklets_array",
+                        help="Folder containing {sequence}.npy (default: tracklets_array).")
+    parser.add_argument("--output_dir", type=str, default="tracklets_vis",
+                        help="Root folder containing per-sequence tracklets (default: tracklets_vis).")
+    args = parser.parse_args()
+
+    arr_path = Path(args.arr_dir) / f"{args.sequence}.npy"
+    arr = np.load(arr_path)
+    img_dir = Path("dataset") / args.sequence / "img1"
+    tracklets_root = Path(args.output_dir) / args.sequence
+
+    arr_new = interpolate_tracklet(
+        arr=arr,
+        tid=args.tracklet_id,
+        max_gap=args.max_gap,
+        img_dir=str(img_dir),
+        tracklets_root=str(tracklets_root),
+    )
+
+    # Overwrite the same npy 
+    np.save(arr_path, arr_new)
+
+    print(f"Interpolated tracklet {args.tracklet_id:04d} (max_gap={args.max_gap}).")
+    print(f"New array shape: {arr_new.shape}")
+
+
 if __name__ == "__main__":
-    seq_name = "seq01"
-    arr = np.load(f"tracklets_array/{seq_name}.npy")
-    img_dir = f"dataset/{seq_name}/img1"
-    tracklets_root = f"tracklets_vis/{seq_name}"
-
-    tid = 25
-    arr_new = interpolate_tracklet(arr, img_dir, tracklets_root, tid, max_gap=10)
-
-    np.save(f"tracklets_array/{seq_name}_interpolate.npy", arr_new)
+    # Example: python interpolate_tracklet.py seq01 25
+    main()

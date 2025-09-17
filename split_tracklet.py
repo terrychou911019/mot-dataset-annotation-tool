@@ -16,11 +16,10 @@ def split_tracklet(arr: np.ndarray, tid: int, split_frame: int, tracklets_root: 
         tracklets_root (str): Root folder containing per-tracklet folders named as tracklet_XXXX.  
 
     Returns:
-        tuple[np.ndarray, int]: (arr_new, new_tid)
-            - arr_new: Updated array with one additional tracklet row (1-based indexing preserved).
-            - new_tid: Newly created tracklet ID.
+        arr_new (np.ndarray): Updated array with one additional tracklet row after splitting.
+        new_tid (int): Newly created splitted tracklet ID.
     """
-    num_tracks, num_frames, _ = arr.shape  # already includes +1 for padding
+    num_tracks, num_frames, _ = arr.shape  
 
     if not (1 <= tid < num_tracks):
         raise ValueError(f"tid out of range: {tid} (valid: 1..{num_tracks-1})")
@@ -38,7 +37,7 @@ def split_tracklet(arr: np.ndarray, tid: int, split_frame: int, tracklets_root: 
     arr_new[new_tid, split_frame:, :] = arr_new[tid, split_frame:, :]
     arr_new[tid, split_frame:, :] = np.nan
 
-    # Update crops and manifests on disk
+    # Update crops on disk
     root = Path(tracklets_root)
     old_dir = root / f"tracklet_{tid:04d}"
     new_dir = root / f"tracklet_{new_tid:04d}"
@@ -55,26 +54,6 @@ def split_tracklet(arr: np.ndarray, tid: int, split_frame: int, tracklets_root: 
                 continue
             if frame_id >= split_frame:
                 shutil.move(str(p), str(new_dir / p.name))
-
-        # Update manifest files
-        old_manifest = old_dir / "_manifest.csv"
-        new_manifest = new_dir / "_manifest.csv"
-        if old_manifest.exists():
-            lines = old_manifest.read_text(encoding="utf-8").splitlines()
-            if lines:
-                header = lines[0]
-                with old_manifest.open("w", encoding="utf-8", newline="") as f_old, \
-                     new_manifest.open("w", encoding="utf-8", newline="") as f_new:
-                    f_old.write(header + "\n")
-                    f_new.write(header + "\n")
-                    for line in lines[1:]:
-                        if not line.strip():
-                            continue
-                        frame_id = int(line.split(",")[0])
-                        if frame_id < split_frame:
-                            f_old.write(line + "\n")
-                        else:
-                            f_new.write(line + "\n")
 
     return arr_new, new_tid
 
@@ -104,5 +83,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # python split_tracklet.py seq01 18 373
+    # Example: python split_tracklet.py seq01 18 373
     main()
