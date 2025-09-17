@@ -26,11 +26,11 @@ def main():
     parser = argparse.ArgumentParser(description="Count bboxes of a specific tracklet ID.")
     parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
     parser.add_argument("tracklet_id", type=int, help="Tracklet ID to count.")
-    parser.add_argument("--root", type=str, default="gta_tracklets",
+    parser.add_argument("--txt_dir", type=str, default="gta_tracklets",
                         help="Folder that contains {sequence}.txt (default: gta_tracklets)")
     args = parser.parse_args()
 
-    txt_path = Path(args.root) / f"{args.sequence}.txt"
+    txt_path = Path(args.txt_dir) / f"{args.sequence}.txt"
     count = count_tracklet_bboxes(txt_path, args.tracklet_id)
     print(f"Tracklet {args.tracklet_id} has {count} bboxes in {args.sequence}.")
 
