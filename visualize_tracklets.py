@@ -1,12 +1,11 @@
 from __future__ import annotations
 import argparse
 from pathlib import Path
-import csv
 import numpy as np
 import cv2
 
 
-def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: str, output_root: str) -> None:
+def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: str, tracklets_root: str) -> None:
     """
     Create a folder per tracklet and save cropped bbox images (resized to resize_w*resize_h).
 
@@ -15,35 +14,16 @@ def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: 
         resize_w (int): Width to resize cropped bbox images.
         resize_h (int): Height to resize cropped bbox images.
         img_dir (str): Directory containing original frame images named as 000001.jpg, 000002.jpg, ...
-        output_root (str): Root directory to save per-tracklet folders and manifests.
+        tracklets_root (str): Root directory to save per-tracklet folders.
     """
-    output_root_path = Path(output_root)
-    output_root_path.mkdir(parents=True, exist_ok=True)
+    tracklets_root_path = Path(tracklets_root)
+    tracklets_root_path.mkdir(parents=True, exist_ok=True)
 
     JPEG_QUALITY = 80
-
     num_tracklets, num_frames, _ = arr.shape
-
-    # Lazy-open per-tracklet manifest files
-    manifest_files: dict[int, "Path"] = {}
-    manifest_writers: dict[int, csv._writer] = {}
-
-    def ensure_tracklet_dir_and_manifest(tid: int):
-        """Ensure tracklet folder and manifest CSV are created and opened."""
-        if tid not in manifest_writers:
-            tracklet_dir = output_root_path / f"tracklet_{tid:04d}"
-            tracklet_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = tracklet_dir / "_manifest.csv"
-            f = open(manifest_path, "w", newline="", encoding="utf-8")
-            writer = csv.writer(f)
-            writer.writerow(["frame", "x", "y", "w", "h", "filename"])
-            manifest_files[tid] = f
-            manifest_writers[tid] = writer
-        return output_root_path / f"tracklet_{tid:04d}", manifest_writers[tid]
-
     img_dir_path = Path(img_dir)
 
-    for fid in range(1, num_frames):  # 1-based frames (skip index 0)
+    for fid in range(1, num_frames):
         img_path = img_dir_path / f"{fid:06d}.jpg"
         if not img_path.exists():
             continue
@@ -54,11 +34,11 @@ def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: 
 
         H, W = img.shape[:2]
 
-        # Iterate all tracklets for this frame
-        for tid in range(1, num_tracklets):  # 1-based tracklet ids (skip index 0)
+        # Iterate over all tracklets for this frame
+        for tid in range(1, num_tracklets):
             bbox = arr[tid, fid]
             if np.any(np.isnan(bbox)):
-                continue  # no bbox for (tid, fid)
+                continue  # no bbox for this (tid, fid)
 
             # Convert bbox to float then to int bounds (floor/ceil)
             x, y, w, h = bbox.astype(float)
@@ -81,24 +61,18 @@ def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: 
             if crop.size == 0:
                 continue
 
-            # Resize (down/up) with a single policy
+            # Resize to fixed size
             resized = cv2.resize(crop, (resize_w, resize_h), interpolation=cv2.INTER_AREA)
 
-            # Ensure tracklet directory & manifest
-            tracklet_dir, writer = ensure_tracklet_dir_and_manifest(tid)
+            # Ensure tracklet folder exists
+            tracklet_dir = tracklets_root_path / f"tracklet_{tid:04d}"
+            tracklet_dir.mkdir(parents=True, exist_ok=True)
+
             out_name = f"{fid:06d}.jpg"
             out_path = tracklet_dir / out_name
-
             cv2.imwrite(str(out_path), resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
 
-            # Write manifest: store clamped int bbox
-            writer.writerow([fid, int(x0), int(y0), int(x1 - x0), int(y1 - y0), out_name])
-
-    # Close all manifests
-    for f in manifest_files.values():
-        f.close()
-
-    print(f"All crops ({resize_w}*{resize_h}) saved under: {output_root_path}")
+    print(f"All crops ({resize_w}*{resize_h}) saved under: {tracklets_root_path}")
 
 
 def main():
@@ -113,10 +87,10 @@ def main():
     arr_path = Path(args.arr_dir) / f"{args.sequence}.npy"
     arr = np.load(arr_path)
     resize_w, resize_h = 240, 480
-    output_root = Path(args.output_dir) / args.sequence
-    img_dir = Path("dataset") / args.sequence / "img1" 
+    tracklets_root = Path(args.output_dir) / args.sequence
+    img_dir = Path("dataset") / args.sequence / "img1"
 
-    visualize_tracklets(arr, resize_w, resize_h, str(img_dir), str(output_root))
+    visualize_tracklets(arr, resize_w, resize_h, str(img_dir), str(tracklets_root))
 
 
 if __name__ == "__main__":
