@@ -63,7 +63,7 @@ def txt2array(txt_path: str, num_frames: Optional[int] = None, num_tracks: Optio
 def main():
     parser = argparse.ArgumentParser(description="Convert MOT-style txt to dense numpy array.")
     parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
-    parser.add_argument("--root", type=str, default="gta_tracklets",
+    parser.add_argument("--txt_dir", type=str, default="gta_tracklets",
                         help="Folder that contains {sequence}.txt (default: gta_tracklets)")
     parser.add_argument("--output_dir", type=str, default="tracklets_array",
                         help="Folder to save {sequence}.npy (default: tracklets_array)")
@@ -73,7 +73,7 @@ def main():
                         help="Override max track id; if omitted, inferred from file")
     args = parser.parse_args()
 
-    txt_path = Path(args.root) / f"{args.sequence}.txt"
+    txt_path = Path(args.txt_dir) / f"{args.sequence}.txt"
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{args.sequence}.npy"
