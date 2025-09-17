@@ -41,13 +41,13 @@ def video2img(video_path: str, output_dir: str = "img1") -> int:
 def main():
     parser = argparse.ArgumentParser(description="Convert a video into images.")
     parser.add_argument("sequence", type=str, help="Sequence name (e.g., seq01).")
-    parser.add_argument("--root", type=str, default="videos",
+    parser.add_argument("--video_dir", type=str, default="videos",
                         help="Folder that contains {sequence}.mp4 (default: videos)")
     parser.add_argument("--output_dir", type=str, default="dataset",
                         help="Folder to save {sequence}/img1 (default: dataset)")
     args = parser.parse_args()
 
-    video_file = Path(args.root) / f"{args.sequence}.mp4"
+    video_file = Path(args.video_dir) / f"{args.sequence}.mp4"
     output_dir = Path(args.output_dir) / args.sequence / "img1"
 
     video2img(str(video_file), str(output_dir))
