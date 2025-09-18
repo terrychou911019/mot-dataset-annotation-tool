@@ -19,7 +19,7 @@ def visualize_tracklets(arr: np.ndarray, resize_w: int, resize_h: int, img_dir: 
     tracklets_root_path = Path(tracklets_root)
     tracklets_root_path.mkdir(parents=True, exist_ok=True)
 
-    JPEG_QUALITY = 80
+    JPEG_QUALITY = 95
     num_tracklets, num_frames, _ = arr.shape
     img_dir_path = Path(img_dir)
 
