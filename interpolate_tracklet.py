@@ -5,14 +5,25 @@ import numpy as np
 import cv2
 
 
-def interpolate_tracklet(arr: np.ndarray, tid: int, max_gap: int, img_dir: str, tracklets_root: str) -> np.ndarray:
+def interpolate_tracklet(
+    arr: np.ndarray,
+    tid: int,
+    max_gap: int,
+    resize_w: int,
+    resize_h: int,
+    img_dir: str,
+    tracklets_root: str,
+) -> np.ndarray:
     """
     Linearly interpolate missing bboxes for a single tracklet within gaps <= max_gap.
+    For each interpolated frame, save a resized crop (resize_w x resize_h) to the tracklet folder.
 
     Args:
         arr (np.ndarray): Tracklet array of shape (num_tracks+1, num_frames+1, 4).
         tid (int): Tracklet ID to interpolate (1-based).
         max_gap (int): Maximum allowed gap length (inclusive) for interpolation.
+        resize_w (int): Width to resize cropped bbox images.
+        resize_h (int): Height to resize cropped bbox images.
         img_dir (str): Directory containing per-frame images named as 000001.jpg, 000002.jpg, ...
         tracklets_root (str): Root folder containing per-tracklet folders named as tracklet_XXXX.
 
@@ -23,6 +34,7 @@ def interpolate_tracklet(arr: np.ndarray, tid: int, max_gap: int, img_dir: str, 
     if not (1 <= tid < num_tracks):
         raise ValueError(f"tid out of range: {tid} (valid: 1..{num_tracks-1})")
 
+    JPEG_QUALITY = 95
     arr_new = arr.copy()
     tracklet_dir = Path(tracklets_root) / f"tracklet_{tid:04d}"
     tracklet_dir.mkdir(parents=True, exist_ok=True)
@@ -53,7 +65,7 @@ def interpolate_tracklet(arr: np.ndarray, tid: int, max_gap: int, img_dir: str, 
                 bbox_interp = (1.0 - alpha) * bbox_start + alpha * bbox_end
                 arr_new[tid, f, :] = bbox_interp
 
-                # Save cropped image for the interpolated bbox if the frame exists on disk
+                # Save resized cropped image for the interpolated bbox if the frame exists on disk
                 img_path = img_dir_path / f"{f:06d}.jpg"
                 if not img_path.exists():
                     continue
@@ -82,8 +94,11 @@ def interpolate_tracklet(arr: np.ndarray, tid: int, max_gap: int, img_dir: str, 
                 if crop.size == 0:
                     continue
 
+                # Resize to fixed size (same policy as visualize_tracklets)
+                resized = cv2.resize(crop, (resize_w, resize_h), interpolation=cv2.INTER_AREA)
+
                 out_path = tracklet_dir / f"{f:06d}.jpg"
-                cv2.imwrite(str(out_path), crop)
+                cv2.imwrite(str(out_path), resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
 
     return arr_new
 
@@ -104,15 +119,20 @@ def main():
     img_dir = Path("dataset") / args.sequence / "img1"
     tracklets_root = Path(args.output_dir) / args.sequence
 
+    # Keep the same default resize as visualize_tracklets
+    resize_w, resize_h = 240, 480
+
     arr_new = interpolate_tracklet(
         arr=arr,
         tid=args.tracklet_id,
         max_gap=args.max_gap,
+        resize_w=resize_w,
+        resize_h=resize_h,
         img_dir=str(img_dir),
         tracklets_root=str(tracklets_root),
     )
 
-    # Overwrite the same npy 
+    # Overwrite the same npy
     np.save(arr_path, arr_new)
 
     print(f"Interpolated tracklet {args.tracklet_id:04d} (max_gap={args.max_gap}).")
@@ -120,5 +140,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # Example: python interpolate_tracklet.py seq01 25
+    # Example: python interpolate_tracklet.py seq01 25 --max_gap 10
     main()
