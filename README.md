@@ -19,6 +19,7 @@
 ### API
 
 -   txt2array
+-   array2txt
 -   split_tracklet
 -   merge_tracklets
 -   interpolate_tracklet
@@ -39,3 +40,4 @@
 -   (optional) run `python visualize_array.py` to visualize 2D array
 -   run `python interpolate_trackelt.py` to do interpolation when there are gap in a tracklet
 -   (optional) run `python visualize_array.py` to visualize 2D array
+-   run `python array2txt.py` to change the array into txt, which is under `final_tracklets`
