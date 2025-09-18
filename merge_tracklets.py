@@ -65,7 +65,7 @@ def merge_tracklets(arr: np.ndarray, tid_a: int, tid_b: int, tracklets_root: str
         if not src_dir.exists():
             return
         for p in src_dir.iterdir():
-            if p.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
+            if p.suffix.lower() != ".jpg":
                 continue
             if len(p.stem) != 6 or not p.stem.isdigit():
                 continue
